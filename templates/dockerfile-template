@@ -20,13 +20,16 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy app code
 COPY . /app
 
-# Set environment variables
-ENV PYTHONPATH=/app
+# Set environment variables 
+# python app tells python where to look for modules
+# flask_App tells flask which file to run
+#flask_run_host ensures flasks listens to all network interfaces so its avaialble outside the container
+ENV PYTHONPATH=/app 
 ENV FLASK_APP=app
 ENV FLASK_RUN_HOST=0.0.0.0
 
 # Expose Flask port
 EXPOSE 5000
 
-# Run the Flask app
+# Run the Flask app, specifies the default command to run when container starts
 CMD ["flask", "run", "--host=0.0.0.0"]

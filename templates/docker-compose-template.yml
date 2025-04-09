@@ -6,16 +6,16 @@ services:
     #   dockerfile: Dockerfile
     container_name: flask_app # Name of the container
     ports:
-      - "5000:5000" # Expose port 5000 to host
+      - "5000:5000" # Expose port 5000 to host, first line is port you make http requests to
     environment:
-      - POSTGRES_USER=${POSTGRES_USER} # Read from .env
+      - POSTGRES_USER=${POSTGRES_USER} # Read from .env, needs to be in same directory
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_PORT=${POSTGRES_PORT}
       - FLASK_APP=app.main # Flask entrypoint
       - FLASK_RUN_HOST=0.0.0.0 # Bind to all interfaces
     depends_on:
-      - db # Wait for db service to be ready
+      - db # Wait for db service to be ready, could use healthcheck to ensure its up and running
     env_file:
       - ./.env # Load env vars from file
     networks:
@@ -70,8 +70,8 @@ services:
 networks:
   todo_network:
     name: todonetwork # Custom name for the network
-    driver: bridge # Use bridge networking
+    driver: bridge # Use bridge networking, could be host, none, overlay, macvlan, container
 
 volumes:
   todo_data:
-    driver: local # Local volume to persist db data
+    driver: local # Local volume to persist db data, can use ebs or efs, or nfs
