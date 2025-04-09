@@ -1,0 +1,77 @@
+services:
+  web:
+    image: esantanamat/flask-app:latest # Use prebuilt Flask app image from Docker Hub
+    # build:  # Optional: Use this instead of image if building locally
+    #   context: .  # Build from current dir
+    #   dockerfile: Dockerfile
+    container_name: flask_app # Name of the container
+    ports:
+      - "5000:5000" # Expose port 5000 to host
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER} # Read from .env
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - FLASK_APP=app.main # Flask entrypoint
+      - FLASK_RUN_HOST=0.0.0.0 # Bind to all interfaces
+    depends_on:
+      - db # Wait for db service to be ready
+    env_file:
+      - ./.env # Load env vars from file
+    networks:
+      - todo_network # Connect to shared Docker network
+    restart: unless-stopped # Restart container unless stopped manually
+    healthcheck:
+      # Basic healthcheck for Flask app
+      test: [ "CMD", "curl", "-f", "http://localhost:5000" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      # Log rotation to avoid unbounded growth
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Access host machine if needed
+
+  db:
+    image: postgres:13 # Use official Postgres image
+    container_name: postgres_db # Name of the container
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER} # Credentials and db name from env
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+    ports:
+      - "5432:5432" # Expose Postgres port
+    volumes:
+      - todo_data:/var/lib/postgresql/data # Persist Postgres data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql # Run SQL at init
+    env_file:
+      - ./.env # Load credentials from env file
+    networks:
+      - todo_network # Connect to shared Docker network
+    restart: unless-stopped # Restart unless manually stopped
+    healthcheck:
+      # Check DB is accepting connections
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER}" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      # Log rotation
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  todo_network:
+    name: todonetwork # Custom name for the network
+    driver: bridge # Use bridge networking
+
+volumes:
+  todo_data:
+    driver: local # Local volume to persist db data

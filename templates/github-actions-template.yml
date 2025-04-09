@@ -1,0 +1,131 @@
+name: Deployment Template for EC2 Projects
+
+on:
+  push:
+    branches:
+      - main  # Trigger deployment when you push to main
+      # - develop  # Optional: uncomment for staging/dev workflows
+
+# Optional: support calling this as a reusable workflow
+# on:
+#   workflow_call:
+#     inputs:
+#       environment:
+#         required: true
+#         type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./YOUR_PROJECT_DIRECTORY  # Replace with your working dir, or dont :P up to you, but if you dont you will have to constantly reference the full path
+
+    steps:
+      # Checkout your Git repo
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Optional: set environment name (production, staging, etc.)
+      - name: Set environment variable
+        run: echo "ENVIRONMENT=production" >> $GITHUB_ENV
+
+      # Optional: output Git SHA tag for versioning
+      - name: Set Docker image tag
+        run: echo "IMAGE_TAG=your_dockerhub_username/your-app:${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      # Generate .env from GitHub secrets, remember you need to store these values in GitHub secrets for it to function
+      - name: Generate .env file from secrets
+        run: |
+          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> app/.env
+          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> app/.env
+          echo "..."  # Add more secrets as needed
+
+      # Optional: Run tests before deploying
+      - name: Run tests
+        run: |
+          echo "Running tests..."
+          # npm install && npm test OR pytest, etc.
+
+      # Optional: Build and test locally with Docker Compose (useful in CI only)
+      - name: Local Docker Compose test (optional)
+        run: |
+          docker-compose -f docker-compose.yml up -d --build
+          docker-compose ps
+
+      # SCP — Send files to EC2 (repeat this block per file or folder)
+      - name: Copy file(s) to EC2
+        uses: appleboy/scp-action@v0.1.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "./your-path/file.txt"
+          target: "~/target-path/"
+          strip_components: 1  # Adjust as needed
+
+      # Add EC2 host to known_hosts (so SSH doesn’t hang)
+      - name: Add EC2 host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      # Save your EC2 private key
+      - name: Prepare private key for SSH
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+
+      # Replace placeholder (like IP address) in inventory or config files
+      - name: Replace placeholders in config
+        run: |
+          ssh -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "
+            sed -i 's|PLACEHOLDER|${{ secrets.EC2_HOST }}|g' ~/project-path/file.ini
+          "
+
+      # Run Ansible playbook
+      - name: Run Ansible Playbook
+        working-directory: ./path/to/ansible
+        env:
+          ANSIBLE_USER: ${{ secrets.EC2_USERNAME }}
+          ANSIBLE_HOST_KEY_CHECKING: False
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+          sed -i 's|ipaddress|'"${{ secrets.EC2_HOST }}"'|g' inventory.ini
+          ansible-playbook -i inventory.ini playbook.yml --private-key private_key.pem -u ${{ secrets.EC2_USERNAME }}
+
+      # DockerHub Login (optional: only needed if pushing image)
+      - name: Log in to DockerHub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      # Docker build & push
+      - name: Build and push Docker image
+        run: |
+          docker build -t $IMAGE_TAG .
+          docker push $IMAGE_TAG
+
+      # SSH into EC2 and start containers using Docker Compose
+      - name: SSH and Start Containers
+        run: |
+          ssh -i private_key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "
+            cd ~/your-project-dir &&
+            docker rm -f your_container_name || true &&
+            docker-compose pull &&
+            docker-compose up -d
+          "
+
+      # Optional: Notify on failure via webhook (e.g., Slack, Discord)
+      - name: Notify on failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"Deployment failed for EC2 project."}' \
+            ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+      # Optional: Output deployment summary
+      - name: Deployment Summary
+        run: |
+          echo "Deployment to $ENVIRONMENT complete."
+          echo "Image tag: $IMAGE_TAG"
