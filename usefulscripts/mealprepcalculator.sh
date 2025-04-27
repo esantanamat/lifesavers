@@ -1,6 +1,7 @@
 echo "What's the total amount in grams?"
 read weight
-echo "How many grams per serving (check your macros)?"
+defaultresult=$((weight/ 4))
+echo "How many grams per serving (check your macros)? Default: 4 servings, $defaultresult per serving"
 read servingsize
 result=$(( weight / servingsize))
 echo "This gives you about $result servings for this meal prep"
